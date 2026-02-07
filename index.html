@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HotCRP Bidding Helper</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/papaparse@5/papaparse.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #222;
+  background: #f5f5f5;
+}
+
+/* ── Layout ── */
+.app-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr 230px;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+.header {
+  grid-column: 1 / -1;
+  padding: 6px 12px;
+  background: #fff;
+  border-bottom: 2px solid #c00;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 40px;
+}
+
+.header h1 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #900;
+  white-space: nowrap;
+}
+
+.sidebar {
+  overflow-y: auto;
+  padding: 6px;
+  background: #fff;
+  font-size: 14px;
+}
+.sidebar-left { border-right: 1px solid #ddd; }
+.sidebar-right { border-left: 1px solid #ddd; }
+
+.paper-list-container {
+  overflow-y: auto;
+  padding: 0 6px;
+  background: #fafafa;
+}
+
+/* ── Upload screen ── */
+.upload-screen {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px;
+}
+.upload-screen h2 { color: #900; font-size: 20px; }
+.upload-screen p { color: #666; max-width: 500px; text-align: center; }
+
+.drop-zone {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 40px 60px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: #900;
+  background: #fff5f5;
+}
+.drop-zone input { display: none; }
+
+/* ── Header controls ── */
+.header input[type="file"] { display: none; }
+
+.btn {
+  padding: 3px 10px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.btn:hover { background: #f0f0f0; }
+.btn-primary { background: #900; color: #fff; border-color: #900; }
+.btn-primary:hover { background: #700; }
+
+.search-box {
+  padding: 3px 8px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 14px;
+  width: 220px;
+}
+
+.stats {
+  font-size: 13px;
+  color: #666;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.stats strong { color: #333; }
+
+select.filter-select {
+  padding: 3px 6px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 13px;
+  background: #fff;
+}
+
+/* ── Column headers ── */
+.col-headers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: #f0f0f0;
+  border-bottom: 2px solid #ddd;
+  font-size: 13px;
+  font-weight: 700;
+  color: #555;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  user-select: none;
+}
+.col-header {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.col-header:hover { background: #e0e0e0; }
+.col-header.active { color: #900; }
+.col-header-id { min-width: 46px; flex-shrink: 0; }
+.col-header-title { flex: 1; }
+.col-header-score { min-width: 56px; text-align: right; flex-shrink: 0; }
+.col-header-pref { min-width: 148px; text-align: center; flex-shrink: 0; }
+.filter-info {
+  font-size: 12px;
+  font-weight: 400;
+  color: #900;
+  float: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+  cursor: default;
+}
+
+/* ── Paper list ── */
+.paper-row {
+  border-bottom: 1px solid #eee;
+  padding: 4px 6px;
+  background: #fff;
+  margin-bottom: 1px;
+}
+.paper-row:hover { background: #fafafa; }
+
+.paper-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.paper-id {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 13px;
+  color: #666;
+  min-width: 40px;
+  flex-shrink: 0;
+}
+
+.paper-title {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.paper-title:hover { color: #900; }
+
+.paper-score {
+  font-family: monospace;
+  font-size: 13px;
+  min-width: 50px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.paper-score .score-bar {
+  display: inline-block;
+  height: 10px;
+  background: #4a90d9;
+  border-radius: 1px;
+  vertical-align: middle;
+  margin-right: 4px;
+  min-width: 0;
+}
+
+.pref-buttons {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.pref-btn {
+  padding: 1px 6px;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  background: #f8f8f8;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 24px;
+  text-align: center;
+  transition: all 0.1s;
+}
+.pref-btn:hover { border-color: #999; }
+.pref-btn.active-3 { background: #1a7a1a; color: #fff; border-color: #1a7a1a; }
+.pref-btn.active-2 { background: #2d8f2d; color: #fff; border-color: #2d8f2d; }
+.pref-btn.active-1 { background: #6ab06a; color: #fff; border-color: #6ab06a; }
+.pref-btn.active-0 { background: #ddd; color: #333; border-color: #bbb; }
+.pref-btn.active--1 { background: #d48a00; color: #fff; border-color: #d48a00; }
+.pref-btn.active--100 { background: #c00; color: #fff; border-color: #c00; }
+
+.paper-topics-row {
+  font-size: 12px;
+  color: #888;
+  padding-left: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paper-abstract {
+  padding: 6px 8px 6px 48px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+  background: #f9f9f5;
+  border-left: 3px solid #ddd;
+  margin-top: 4px;
+  white-space: pre-wrap;
+}
+.paper-abstract mark {
+  background: #fff3a8;
+  padding: 0 1px;
+  border-radius: 1px;
+}
+
+/* ── Sidebar: Topic tree ── */
+.sidebar-title {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 0;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 4px;
+  color: #900;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.topic-parent {
+  margin-top: 4px;
+}
+
+.topic-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 0;
+  font-size: 13px;
+}
+.topic-row.child { padding-left: 16px; }
+.topic-row label {
+  flex: 1;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topic-row label:hover { color: #900; }
+.topic-count {
+  font-size: 12px;
+  color: #999;
+  min-width: 24px;
+  text-align: right;
+}
+.topic-score-input {
+  width: 34px;
+  padding: 1px 2px;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  font-size: 12px;
+  text-align: center;
+}
+.topic-score-input:focus { border-color: #900; outline: none; }
+
+.cb {
+  width: 13px; height: 13px;
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  font-size: 11px;
+  line-height: 1;
+  color: transparent;
+  user-select: none;
+}
+.cb.checked { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+.cb:hover { border-color: #666; }
+
+/* ── Sidebar: Keywords ── */
+.keyword-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 4px;
+  min-height: 20px;
+  align-items: center;
+}
+.keyword-chips-placeholder {
+  font-size: 12px;
+  color: #bbb;
+  font-style: italic;
+}
+.keyword-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  background: #e8f0fe;
+  border: 1px solid #b0c4de;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #333;
+  cursor: default;
+  max-width: 100%;
+}
+.keyword-chip-x {
+  cursor: pointer;
+  color: #888;
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 1px;
+}
+.keyword-chip-x:hover { color: #c00; }
+.keyword-search {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.keyword-search:focus { border-color: #900; outline: none; }
+
+.keyword-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 0;
+  font-size: 13px;
+}
+.keyword-word {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.keyword-word:hover { color: #900; }
+.keyword-df {
+  font-size: 12px;
+  color: #999;
+  min-width: 24px;
+  text-align: right;
+}
+.keyword-score-input {
+  width: 34px;
+  padding: 1px 2px;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  font-size: 12px;
+  text-align: center;
+}
+.keyword-score-input:focus { border-color: #900; outline: none; }
+
+
+/* ── Misc ── */
+.clear-filters-btn {
+  font-size: 12px;
+  color: #900;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+.clear-filters-btn:hover { text-decoration: underline; }
+
+.no-results {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+  font-size: 14px;
+}
+
+.topic-tag {
+  display: inline-block;
+  font-size: 11px;
+  background: #eef;
+  color: #559;
+  padding: 0 4px;
+  border-radius: 2px;
+  margin-right: 3px;
+  margin-top: 1px;
+}
+.topic-tag.matched { background: #ffe; color: #960; font-weight: 600; }
+
+.paper-row.focused { outline: 2px solid #4a90d9; outline-offset: -2px; }
+
+/* ── Toggle button ── */
+.toggle-btn {
+  padding: 2px 8px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.toggle-btn:hover { background: #f0f0f0; }
+.toggle-btn.active { background: #369; color: #fff; border-color: #369; }
+
+.undo-btn {
+  padding: 2px 6px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.undo-btn:hover:not(:disabled) { background: #f0f0f0; }
+.undo-btn:disabled { opacity: 0.3; cursor: default; }
+
+/* ── Help modal ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal {
+  background: #fff;
+  border-radius: 6px;
+  padding: 20px 28px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.modal h2 {
+  font-size: 16px;
+  color: #900;
+  margin-bottom: 12px;
+}
+.modal table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.modal td {
+  padding: 3px 0;
+}
+.modal td:first-child {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-weight: 600;
+  width: 80px;
+  color: #555;
+}
+.modal .close-btn {
+  margin-top: 14px;
+  text-align: right;
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Upload screen -->
+  <div v-if="!papers.length" class="app-layout">
+    <div class="upload-screen">
+      <h2>HotCRP Bidding Helper</h2>
+      <p>Upload your HotCRP review preferences CSV file. All data is processed locally in your browser — nothing is sent to any server.</p>
+      <div class="drop-zone"
+           :class="{ dragover: isDragging }"
+           @click="$refs.fileInput.click()"
+           @dragover.prevent="isDragging = true"
+           @dragleave="isDragging = false"
+           @drop.prevent="handleDrop">
+        <div>Drop CSV file here or click to browse</div>
+        <div style="margin-top:8px;font-size:13px;color:#999">Expects: paper, title, preference, abstract, topics</div>
+        <input ref="fileInput" type="file" accept=".csv" @change="handleFileSelect">
+      </div>
+    </div>
+  </div>
+
+  <!-- Main app -->
+  <div v-else class="app-layout">
+    <!-- Header -->
+    <div class="header">
+      <h1>HotCRP Bidding Helper</h1>
+      <button class="btn" @click="$refs.reloadInput.click()">Load CSV</button>
+      <input ref="reloadInput" type="file" accept=".csv" @change="handleFileSelect" style="display:none">
+      <button class="btn btn-primary" @click="exportCSV">Export CSV</button>
+      <button class="btn" @click="$refs.profileInput.click()" title="Import reviewer_profile.json">Import Profile</button>
+      <input ref="profileInput" type="file" accept=".json" @change="importProfile" style="display:none">
+      <button class="btn" @click="exportProfile" title="Export current scores as profile JSON">Export Profile</button>
+      <input class="search-box" v-model="searchQuery" placeholder="Search titles & abstracts..." @input="debouncedSearch">
+      <button class="toggle-btn" :class="{ active: showAllAbstracts }" @click="showAllAbstracts = !showAllAbstracts" title="Show/hide all abstracts">Show Abstracts</button>
+      <button class="toggle-btn" :class="{ active: showTopics }" @click="showTopics = !showTopics" title="Show/hide topic tags on papers">Show Topics</button>
+      <button class="undo-btn" @click="undo" :disabled="!undoStack.length" title="Undo last preference change (u)">&#x21A9;</button>
+      <button class="undo-btn" @click="redo" :disabled="!redoStack.length" title="Redo preference change (r)">&#x21AA;</button>
+      <select class="filter-select" v-model="prefFilter">
+        <option value="all">All prefs</option>
+        <option value="unset">Unset (0)</option>
+        <option value="positive">Positive (1-3)</option>
+        <option value="negative">Negative</option>
+        <option value="conflict">Conflict</option>
+      </select>
+      <div class="stats">
+        <strong>{{ filteredPapers.length }}</strong>/{{ papers.length }}
+        · <span style="color:#1a7a1a">{{ prefDist[3] || 0 }}W</span>
+        <span style="color:#2d8f2d">{{ prefDist[2] || 0 }}G</span>
+        <span style="color:#6ab06a">{{ prefDist[1] || 0 }}O</span>
+        <span style="color:#999">{{ prefDist[0] || 0 }}N</span>
+        <span style="color:#d48a00">{{ prefDist[-1] || 0 }}!</span>
+        <span style="color:#c00">{{ prefDist[-100] || 0 }}C</span>
+        · <strong>{{ totalPositive }}</strong> positive
+      </div>
+    </div>
+
+    <!-- Left sidebar: Topics -->
+    <div class="sidebar sidebar-left">
+      <div class="sidebar-title">
+        Topics
+        <button class="clear-filters-btn" @click="clearTopicFilters" v-if="selectedTopics.size > 0">clear</button>
+      </div>
+      <div v-for="parent in topicTree" :key="parent.name" class="topic-parent">
+        <div class="topic-row">
+          <span class="cb" :class="{checked: isTopicSelected(parent.name)}" @click="toggleTopic(parent.name)">&#10003;</span>
+          <label @click="toggleTopic(parent.name)" :title="parent.name">{{ parent.shortName }}</label>
+          <span class="topic-count">{{ parent.count }}</span>
+          <input type="number" class="topic-score-input" v-model.number="parent.score" @input="onScoreChange" title="Score weight">
+        </div>
+        <div v-for="child in parent.children" :key="child.fullName" class="topic-row child">
+          <span class="cb" :class="{checked: isTopicSelected(child.fullName)}" @click="toggleTopic(child.fullName)">&#10003;</span>
+          <label @click="toggleTopic(child.fullName)" :title="child.fullName">{{ child.name }}</label>
+          <span class="topic-count">{{ child.count }}</span>
+          <input type="number" class="topic-score-input" v-model.number="child.score" @input="onScoreChange" title="Score weight">
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Paper list -->
+    <div class="paper-list-container" ref="paperListContainer" @keydown="handleKeydown" tabindex="0">
+      <!-- Column headers -->
+      <div class="col-headers">
+        <span class="col-header col-header-id" :class="{ active: sortCol === 'id' }" @click="toggleSort('id')">
+          #ID {{ sortCol === 'id' ? (sortAsc ? '▲' : '▼') : '' }}
+        </span>
+        <span class="col-header col-header-title" :class="{ active: sortCol === 'title' }" @click="toggleSort('title')">
+          Title {{ sortCol === 'title' ? (sortAsc ? '▲' : '▼') : '' }}
+          <span class="filter-info" v-if="activeFilterTerms.length" @click.stop>
+            Filter: {{ activeFilterTerms.join(', ').substring(0, 60) }}{{ activeFilterTerms.join(', ').length > 60 ? '…' : '' }}
+          </span>
+        </span>
+        <span class="col-header col-header-score" :class="{ active: sortCol === 'score' }" @click="toggleSort('score')" v-if="hasAnyScores">
+          Score {{ sortCol === 'score' ? (sortAsc ? '▲' : '▼') : '' }}
+        </span>
+        <span class="col-header col-header-pref" :class="{ active: sortCol === 'pref' }" @click="toggleSort('pref')">
+          Pref {{ sortCol === 'pref' ? (sortAsc ? '▲' : '▼') : '' }}
+        </span>
+      </div>
+
+      <div v-if="filteredPapers.length === 0" class="no-results">
+        No papers match current filters.
+      </div>
+
+      <div v-for="(paper, index) in filteredPapers" :key="paper.id"
+           class="paper-row" :class="{ focused: focusedIndex === index }"
+           @click="toggleExpand(paper.id, index)" style="cursor:pointer">
+        <div class="paper-header">
+          <span class="paper-id">#{{ paper.id }}</span>
+          <span class="paper-title" v-html="highlightTitle(paper.title)"></span>
+          <span class="paper-score" v-if="hasAnyScores">
+            <span class="score-bar" :style="{ width: scoreBarWidth(paper.compositeScore) + 'px' }"></span>
+            {{ paper.compositeScore.toFixed(1) }}
+          </span>
+          <div class="pref-buttons" @click.stop>
+            <button v-for="pv in prefValues" :key="pv.value"
+                    class="pref-btn"
+                    :class="{ ['active-' + pv.value]: paper.preference === pv.value }"
+                    :title="pv.label"
+                    @click="setPref(paper, pv.value)">
+              {{ pv.short }}
+            </button>
+          </div>
+        </div>
+        <div class="paper-topics-row" v-if="showTopics">
+          <span v-for="t in paper.topics" :key="t" class="topic-tag" :class="{ matched: isTopicSelected(t) }">{{ shortTopic(t) }}</span>
+        </div>
+        <div v-if="showAllAbstracts || expandedPaper === paper.id" class="paper-abstract" @click.stop v-html="highlightAbstract(paper.abstract)"></div>
+      </div>
+    </div>
+
+    <!-- Help modal -->
+    <div class="modal-overlay" v-if="showHelp" @click.self="showHelp = false">
+      <div class="modal">
+        <h2>Keyboard Shortcuts</h2>
+        <table>
+          <tr><td>j / ↓</td><td>Next paper</td></tr>
+          <tr><td>k / ↑</td><td>Previous paper</td></tr>
+          <tr><td>Enter</td><td>Toggle abstract</td></tr>
+          <tr><td>3</td><td>Want to review</td></tr>
+          <tr><td>2</td><td>Good paper for me</td></tr>
+          <tr><td>1</td><td>OK paper for me</td></tr>
+          <tr><td>0</td><td>No preference</td></tr>
+          <tr><td>-</td><td>Should not review</td></tr>
+          <tr><td>c</td><td>Conflict</td></tr>
+          <tr><td>u</td><td>Undo last preference</td></tr>
+          <tr><td>r</td><td>Redo preference</td></tr>
+          <tr><td>?</td><td>This help</td></tr>
+        </table>
+        <div class="close-btn"><button class="btn" @click="showHelp = false">Close</button></div>
+      </div>
+    </div>
+
+    <!-- Right sidebar: Keywords -->
+    <div class="sidebar sidebar-right">
+      <div class="sidebar-title">
+        Keywords <span style="font-weight:400;font-size:12px;color:#999">(TF-IDF, stemmed)</span>
+        <button class="clear-filters-btn" @click="clearKeywordFilters" v-if="selectedKeywords.size > 0">clear</button>
+      </div>
+      <div class="keyword-chips">
+        <span v-if="activeKeywordChips.length === 0" class="keyword-chips-placeholder">select keywords to filter</span>
+        <span class="keyword-chip" v-for="chip in activeKeywordChips" :key="chip.stem">
+          {{ chip.word }}<span class="keyword-chip-x" @click="toggleKeyword(chip.stem)">&times;</span>
+        </span>
+      </div>
+      <input class="keyword-search" v-model="keywordSearch" placeholder="Find keyword...">
+      <div v-for="kw in filteredKeywords" :key="kw.stem" class="keyword-row">
+        <span class="cb" :class="{checked: isKeywordSelected(kw.stem)}" @click="toggleKeyword(kw.stem)">&#10003;</span>
+        <span class="keyword-word" @click="toggleKeyword(kw.stem)" :title="'Forms: ' + kw.forms.join(', ') + ' | DF: ' + kw.df">{{ kw.word }}</span>
+        <span class="keyword-df">{{ kw.df }}</span>
+        <input type="number" class="keyword-score-input" v-model.number="kw.score" @input="onScoreChange" title="Score weight">
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed, watch, nextTick, reactive } = Vue;
+
+// ── Simple suffix stemmer ──
+function simpleStem(word) {
+  if (word.length < 4) return word;
+  // -ies -> -y
+  if (word.endsWith('ies') && word.length > 4) return word.slice(0, -3) + 'y';
+  // -es after sibilants
+  if (word.length > 5 && (word.endsWith('ches') || word.endsWith('shes') || word.endsWith('ses') || word.endsWith('xes') || word.endsWith('zes'))) {
+    return word.slice(0, -2);
+  }
+  // -s (not -ss, -us, -is, -ous)
+  if (word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us') && !word.endsWith('is') && !word.endsWith('ous') && word.length > 4) {
+    return word.slice(0, -1);
+  }
+  // -ied -> -y
+  if (word.endsWith('ied') && word.length > 4) return word.slice(0, -3) + 'y';
+  // -ed (not -eed)
+  if (word.endsWith('ed') && !word.endsWith('eed') && word.length > 5) {
+    const base = word.slice(0, -2);
+    // doubled consonant: e.g. "stopped" -> "stop"
+    if (base.length >= 3 && base[base.length - 1] === base[base.length - 2]) return base.slice(0, -1);
+    return base;
+  }
+  // -ing
+  if (word.endsWith('ing') && word.length > 5) {
+    const base = word.slice(0, -3);
+    if (base.length < 3) return word;
+    if (base[base.length - 1] === base[base.length - 2]) return base.slice(0, -1);
+    return base;
+  }
+  // -tion / -sion -> remove last 3 chars (keep the t/s)
+  if ((word.endsWith('tion') || word.endsWith('sion')) && word.length > 6) {
+    return word.slice(0, -3);
+  }
+  return word;
+}
+
+// ── Stop words ──
+const STOP_WORDS = new Set([
+  'the','a','an','and','or','but','in','on','at','to','for','of','with','by','from','as','is',
+  'was','are','were','be','been','being','have','has','had','do','does','did','will','would',
+  'could','should','may','might','shall','can','this','that','these','those','it','its','we',
+  'our','they','their','them','he','she','his','her','not','no','nor','so','if','then','than',
+  'too','very','just','about','above','after','again','all','also','am','any','because','before',
+  'between','both','during','each','few','further','get','got','here','how','into','more','most',
+  'much','my','myself','only','other','out','own','same','some','such','there','through','under',
+  'until','up','what','when','where','which','while','who','whom','why','you','your',
+  // Academic boilerplate
+  'paper','approach','system','systems','propose','proposed','present','presented','presents',
+  'show','shows','shown','demonstrate','demonstrates','novel','new','based','using','use','used',
+  'uses','results','result','method','methods','framework','technique','techniques','work',
+  'study','first','also','however','existing','previous','prior','provide','provides',
+  'evaluate','evaluation','analysis','performance','significant','significantly','achieve',
+  'achieves','improvement','real','world','practical','effective','effectively','implementation',
+  'implement','implements','prototype','overhead','design','designed','develop','developed',
+  'different','problem','problems','solution','solutions','address','addresses','consider',
+  'considers','introduce','introduces','investigate','investigates','focus','large','number',
+  'well','known','make','makes','one','two','three','many','several','various','without',
+  'over','across','among','within','since','allow','allows','enable','enables','require',
+  'requires','often','thus','therefore','moreover','furthermore','addition','additionally',
+  'particular','especially','specifically','general','commonly','typically',
+  'respectively','given','including','include','includes','need','needs','due','case','cases',
+  'example','examples','way','ways','data','information','process','order','set','high','low',
+  // Security domain (too common to be discriminative)
+  'security','secure','attack','attacks','attacker','attackers','vulnerability','vulnerabilities',
+  'threat','threats','defense','defenses','protection','protect','protects','malicious',
+  // Hyphen-prefix fragments and other short noise
+  'non','pre','per','via','sub','multi','semi','anti','inter','intra','cross','based',
+  'able','end','run','yet','let','whether','while','upon','whose','been','being',
+  'into','such','then','than','them','their','these','those','most','other','some',
+]);
+
+const PREF_VALUES = [
+  { value: 3, label: 'Want to review', short: '3' },
+  { value: 2, label: 'Good paper for me', short: '2' },
+  { value: 1, label: 'OK paper for me', short: '1' },
+  { value: 0, label: 'No preference', short: '0' },
+  { value: -1, label: 'Should not review', short: '-1' },
+  { value: -100, label: 'Conflict', short: 'C' },
+];
+
+const STORAGE_KEY = 'hotcrp-bidding-helper';
+
+createApp({
+  setup() {
+    // ── Core state ──
+    const papers = ref([]);
+    const rawRows = ref([]);
+    const isDragging = ref(false);
+    const searchQuery = ref('');
+    const debouncedSearchQuery = ref('');
+    const prefFilter = ref('all');
+    const sortCol = ref('id');
+    const sortAsc = ref(true);
+    const expandedPaper = ref(null);
+    const focusedIndex = ref(-1);
+    const topicTree = ref([]);
+    const keywords = ref([]);
+    const selectedTopics = reactive(new Set());
+    const selectedKeywords = reactive(new Set());
+    const keywordSearch = ref('');
+    const showAllAbstracts = ref(false);
+    const showTopics = ref(true);
+    const showHelp = ref(false);
+    const undoStack = ref([]);  // [{paperId, oldPref, newPref}]
+    const redoStack = ref([]);
+    let searchTimer = null;
+    let saveTimer = null;
+
+    // ── Sorting ──
+    function toggleSort(col) {
+      if (sortCol.value === col) {
+        sortAsc.value = !sortAsc.value;
+      } else {
+        sortCol.value = col;
+        // Default direction: score descending, others ascending
+        sortAsc.value = col !== 'score';
+      }
+    }
+
+    // ── CSV parsing ──
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) loadFile(file);
+      // Reset the input so the same file can be re-selected
+      event.target.value = '';
+    }
+
+    function handleDrop(event) {
+      isDragging.value = false;
+      const file = event.dataTransfer.files[0];
+      if (file) loadFile(file);
+    }
+
+    function loadFile(file) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: false,
+        complete(results) {
+          // Clear all filters and state for new file
+          searchQuery.value = '';
+          debouncedSearchQuery.value = '';
+          prefFilter.value = 'all';
+          sortCol.value = 'id';
+          sortAsc.value = true;
+          expandedPaper.value = null;
+          focusedIndex.value = -1;
+          selectedTopics.clear();
+          selectedKeywords.clear();
+          keywordSearch.value = '';
+          undoStack.value = [];
+          redoStack.value = [];
+
+          processData(results.data);
+        },
+        error(err) {
+          alert('CSV parse error: ' + err.message);
+        }
+      });
+    }
+
+    function processData(rows) {
+      const validRows = rows.filter(r => r.paper && String(r.paper).trim());
+      rawRows.value = validRows;
+
+      const parsedPapers = validRows.map(row => {
+        const topicsStr = (row.topics || '').trim();
+        const topicsList = topicsStr ? topicsStr.split(';').map(t => t.trim()).filter(Boolean) : [];
+        return {
+          id: parseInt(row.paper, 10),
+          title: (row.title || '').trim(),
+          preference: parseInt(row.preference, 10) || 0,
+          originalPreference: parseInt(row.preference, 10) || 0,
+          abstract: (row.abstract || '').trim(),
+          topics: topicsList,
+          topicSet: new Set(topicsList),
+          tfidf: {},
+          stemSet: new Set(),
+          compositeScore: 0,
+        };
+      });
+
+      papers.value = parsedPapers;
+      buildTopicTree(parsedPapers);
+      computeTFIDF(parsedPapers);
+      loadState();
+      recomputeScores();
+    }
+
+    // ── Topic tree ──
+    function buildTopicTree(parsedPapers) {
+      // parentName -> { paperIds: Set, children: Map<childName, Set<paperId>> }
+      const parentMap = new Map();
+
+      for (const paper of parsedPapers) {
+        for (const topic of paper.topics) {
+          if (topic.includes(':')) {
+            const idx = topic.indexOf(':');
+            const parentName = topic.substring(0, idx).trim();
+            const childName = topic.substring(idx + 1).trim();
+            if (!parentMap.has(parentName)) parentMap.set(parentName, { paperIds: new Set(), children: new Map() });
+            const parent = parentMap.get(parentName);
+            parent.paperIds.add(paper.id);
+            if (!parent.children.has(childName)) parent.children.set(childName, new Set());
+            parent.children.get(childName).add(paper.id);
+          } else {
+            if (!parentMap.has(topic)) parentMap.set(topic, { paperIds: new Set(), children: new Map() });
+            parentMap.get(topic).paperIds.add(paper.id);
+          }
+        }
+      }
+
+      const tree = [];
+      for (const [name, data] of [...parentMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+        const children = [...data.children.entries()]
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([cname, cpaperIds]) => ({
+            name: cname,
+            fullName: name + ': ' + cname,
+            count: cpaperIds.size,
+            score: 0,
+          }));
+        tree.push({
+          name,
+          shortName: name.length > 32 ? name.substring(0, 30) + '…' : name,
+          count: data.paperIds.size,
+          score: 0,
+          children,
+        });
+      }
+      topicTree.value = tree;
+    }
+
+    // ── TF-IDF with stemming ──
+    function tokenize(text) {
+      return text.toLowerCase()
+        .replace(/[^a-z0-9]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 3 && !STOP_WORDS.has(w));
+    }
+
+    function computeTFIDF(parsedPapers) {
+      const N = parsedPapers.length;
+      if (N === 0) return;
+
+      const stemToForms = {}; // stem -> Set<surfaceForm>
+      const df = {};
+      const docStems = [];
+
+      for (const paper of parsedPapers) {
+        const text = paper.title + ' ' + paper.abstract;
+        const words = tokenize(text);
+        const stems = words.map(w => {
+          const s = simpleStem(w);
+          if (!stemToForms[s]) stemToForms[s] = new Set();
+          stemToForms[s].add(w);
+          return s;
+        });
+        docStems.push(stems);
+        const unique = new Set(stems);
+        for (const s of unique) {
+          df[s] = (df[s] || 0) + 1;
+        }
+      }
+
+      const minDF = Math.max(2, Math.floor(N * 0.002));
+      const maxDF = Math.floor(N * 0.6);
+      const vocab = Object.keys(df).filter(s => df[s] >= minDF && df[s] <= maxDF);
+
+      const idf = {};
+      for (const s of vocab) {
+        idf[s] = Math.log(N / df[s]);
+      }
+
+      for (let i = 0; i < parsedPapers.length; i++) {
+        const stems = docStems[i];
+        const tf = {};
+        for (const s of stems) {
+          if (idf[s] !== undefined) {
+            tf[s] = (tf[s] || 0) + 1;
+          }
+        }
+        const len = stems.length || 1;
+        const tfidf = {};
+        for (const [stem, count] of Object.entries(tf)) {
+          tfidf[stem] = (count / len) * idf[stem];
+        }
+        parsedPapers[i].tfidf = tfidf;
+        parsedPapers[i].stemSet = new Set(Object.keys(tf));
+      }
+
+      // Aggregate and pick top keywords
+      const agg = {};
+      for (const paper of parsedPapers) {
+        for (const [stem, score] of Object.entries(paper.tfidf)) {
+          agg[stem] = (agg[stem] || 0) + score;
+        }
+      }
+
+      keywords.value = Object.entries(agg)
+        .map(([stem, aggScore]) => {
+          const forms = [...stemToForms[stem]];
+          // Pick shortest form as display word (usually the base form)
+          const displayWord = forms.sort((a, b) => a.length - b.length)[0];
+          return {
+            stem,
+            word: displayWord,
+            forms,
+            df: df[stem],
+            idf: idf[stem],
+            aggScore,
+            score: 0,
+          };
+        })
+        .sort((a, b) => b.aggScore - a.aggScore);
+    }
+
+    // ── Scoring ──
+    function recomputeScores() {
+      const topicScores = new Map();
+      for (const parent of topicTree.value) {
+        if (parent.score) topicScores.set(parent.name, parent.score);
+        for (const child of parent.children) {
+          if (child.score) topicScores.set(child.fullName, child.score);
+        }
+      }
+
+      const kwScores = new Map();
+      for (const kw of keywords.value) {
+        if (kw.score) kwScores.set(kw.stem, kw.score);
+      }
+
+      for (const paper of papers.value) {
+        let score = 0;
+        for (const topic of paper.topics) {
+          const ts = topicScores.get(topic);
+          if (ts) score += ts;
+          if (topic.includes(':')) {
+            const parentName = topic.substring(0, topic.indexOf(':')).trim();
+            const ps = topicScores.get(parentName);
+            if (ps) score += ps;
+          }
+        }
+        for (const [stem, userScore] of kwScores) {
+          if (userScore !== 0 && paper.tfidf[stem]) {
+            score += userScore * paper.tfidf[stem] * 10;
+          }
+        }
+        paper.compositeScore = score;
+      }
+    }
+
+    const hasAnyScores = computed(() => {
+      for (const p of topicTree.value) {
+        if (p.score) return true;
+        for (const c of p.children) if (c.score) return true;
+      }
+      for (const kw of keywords.value) if (kw.score) return true;
+      return false;
+    });
+
+    const maxScore = computed(() => {
+      let max = 1;
+      for (const p of papers.value) {
+        if (p.compositeScore > max) max = p.compositeScore;
+      }
+      return max;
+    });
+
+    function scoreBarWidth(score) {
+      if (score <= 0) return 0;
+      return Math.min(40, Math.round((score / maxScore.value) * 40));
+    }
+
+    function onScoreChange() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        recomputeScores();
+        saveState();
+      }, 300);
+    }
+
+    // ── Filtering ──
+    const filteredPapers = computed(() => {
+      let result = papers.value;
+
+      // Topic filter (OR: paper matches if it has ANY selected topic)
+      if (selectedTopics.size > 0) {
+        result = result.filter(p => {
+          for (const t of p.topics) {
+            if (selectedTopics.has(t)) return true;
+            if (t.includes(':')) {
+              const parent = t.substring(0, t.indexOf(':')).trim();
+              if (selectedTopics.has(parent)) return true;
+            }
+          }
+          return false;
+        });
+      }
+
+      // Keyword filter (AND/intersection: paper must contain ALL selected keywords)
+      if (selectedKeywords.size > 0) {
+        result = result.filter(p => {
+          for (const stem of selectedKeywords) {
+            if (!p.stemSet.has(stem)) return false;
+          }
+          return true;
+        });
+      }
+
+      // Search
+      if (debouncedSearchQuery.value) {
+        const q = debouncedSearchQuery.value.toLowerCase();
+        const terms = q.split(/\s+/).filter(Boolean);
+        result = result.filter(p => {
+          const text = (p.title + ' ' + p.abstract).toLowerCase();
+          return terms.every(t => text.includes(t));
+        });
+      }
+
+      // Preference filter
+      if (prefFilter.value === 'unset') {
+        result = result.filter(p => p.preference === 0);
+      } else if (prefFilter.value === 'positive') {
+        result = result.filter(p => p.preference > 0);
+      } else if (prefFilter.value === 'negative') {
+        result = result.filter(p => p.preference === -1);
+      } else if (prefFilter.value === 'conflict') {
+        result = result.filter(p => p.preference === -100);
+      }
+
+      // Sorting
+      const col = sortCol.value;
+      const mult = sortAsc.value ? 1 : -1;
+      result = [...result].sort((a, b) => {
+        if (col === 'score') return (a.compositeScore - b.compositeScore) * mult;
+        if (col === 'id') return (a.id - b.id) * mult;
+        if (col === 'pref') return (a.preference - b.preference) * mult;
+        if (col === 'title') return a.title.localeCompare(b.title) * mult;
+        return 0;
+      });
+
+      return result;
+    });
+
+    // When row height changes (topics/abstracts toggled), re-anchor scroll
+    watch([showTopics, showAllAbstracts], () => { if (focusedIndex.value >= 0) scrollToFocused(); });
+
+    // When filtered list changes (e.g. paper rated and filtered out), fix focus
+    watch(filteredPapers, (list, oldList) => {
+      if (!list.length) {
+        focusedIndex.value = -1;
+        expandedPaper.value = null;
+        return;
+      }
+      // If expanded paper is no longer in the list, transfer expand to focused paper
+      const hadExpanded = expandedPaper.value !== null;
+      if (hadExpanded && !list.find(p => p.id === expandedPaper.value)) {
+        // Clamp focused index to new list
+        if (focusedIndex.value >= list.length) focusedIndex.value = list.length - 1;
+        if (focusedIndex.value < 0) focusedIndex.value = 0;
+        expandedPaper.value = list[focusedIndex.value].id;
+        scrollToFocused();
+      } else if (focusedIndex.value >= list.length) {
+        focusedIndex.value = list.length - 1;
+        scrollToFocused();
+      }
+    });
+
+    // Filtered keyword list (for sidebar search)
+    // Show top 200 by default; when searching, search through ALL keywords
+    const SIDEBAR_LIMIT = 200;
+    const filteredKeywords = computed(() => {
+      if (!keywordSearch.value) return keywords.value.slice(0, SIDEBAR_LIMIT);
+      const q = keywordSearch.value.toLowerCase();
+      return keywords.value.filter(kw =>
+        kw.word.includes(q) || kw.stem.includes(q) || kw.forms.some(f => f.includes(q))
+      );
+    });
+
+    // Active keyword chips (for pinned display above search)
+    const activeKeywordChips = computed(() => {
+      if (selectedKeywords.size === 0) return [];
+      return [...selectedKeywords].map(stem => {
+        const kw = keywords.value.find(k => k.stem === stem);
+        return { stem, word: kw ? kw.word : stem };
+      });
+    });
+
+    const prefDist = computed(() => {
+      const dist = {};
+      for (const p of papers.value) {
+        dist[p.preference] = (dist[p.preference] || 0) + 1;
+      }
+      return dist;
+    });
+
+    const totalPositive = computed(() => papers.value.filter(p => p.preference > 0).length);
+
+    const activeFilterTerms = computed(() => {
+      const terms = [];
+      if (selectedTopics.size > 0) terms.push(selectedTopics.size + ' topics');
+      if (selectedKeywords.size > 0) {
+        const kwWords = [...selectedKeywords].map(s => {
+          const kw = keywords.value.find(k => k.stem === s);
+          return kw ? kw.word : s;
+        });
+        terms.push(kwWords.join(' & '));
+      }
+      if (debouncedSearchQuery.value) terms.push('"' + debouncedSearchQuery.value + '"');
+      return terms;
+    });
+
+    // ── Actions ──
+    function setPref(paper, value) {
+      if (paper.preference === value) return;
+      undoStack.value.push({ paperId: paper.id, oldPref: paper.preference, newPref: value });
+      redoStack.value = [];
+      paper.preference = value;
+      debouncedSave();
+    }
+
+    function undo() {
+      if (!undoStack.value.length) return;
+      const entry = undoStack.value.pop();
+      const paper = papers.value.find(p => p.id === entry.paperId);
+      if (!paper) return;
+      redoStack.value.push(entry);
+      paper.preference = entry.oldPref;
+      debouncedSave();
+    }
+
+    function redo() {
+      if (!redoStack.value.length) return;
+      const entry = redoStack.value.pop();
+      const paper = papers.value.find(p => p.id === entry.paperId);
+      if (!paper) return;
+      undoStack.value.push(entry);
+      paper.preference = entry.newPref;
+      debouncedSave();
+    }
+
+    function toggleExpand(paperId, index) {
+      const wasExpanded = expandedPaper.value === paperId;
+      expandedPaper.value = wasExpanded ? null : paperId;
+      if (index !== undefined) focusedIndex.value = index;
+      // After expanding, wait for abstract to render then scroll
+      if (!wasExpanded) nextTick(() => scrollToFocused());
+    }
+
+
+    function toggleTopic(topicName) {
+      if (selectedTopics.has(topicName)) {
+        selectedTopics.delete(topicName);
+        const parent = topicTree.value.find(p => p.name === topicName);
+        if (parent) {
+          for (const child of parent.children) selectedTopics.delete(child.fullName);
+        }
+      } else {
+        selectedTopics.add(topicName);
+        const parent = topicTree.value.find(p => p.name === topicName);
+        if (parent) {
+          for (const child of parent.children) selectedTopics.add(child.fullName);
+        }
+      }
+    }
+
+    function isTopicSelected(name) { return selectedTopics.has(name); }
+
+    function toggleKeyword(stem) {
+      if (selectedKeywords.has(stem)) {
+        selectedKeywords.delete(stem);
+      } else {
+        selectedKeywords.add(stem);
+      }
+    }
+
+    function isKeywordSelected(stem) { return selectedKeywords.has(stem); }
+    function clearTopicFilters() { selectedTopics.clear(); }
+    function clearKeywordFilters() { selectedKeywords.clear(); }
+
+    function shortTopic(t) {
+      if (t.includes(':')) return t.substring(t.indexOf(':') + 1).trim();
+      return t;
+    }
+
+    // ── Search ──
+    function debouncedSearch() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        debouncedSearchQuery.value = searchQuery.value;
+      }, 300);
+    }
+
+    // ── Highlighting ──
+    function escapeHtml(text) {
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function getHighlightTerms() {
+      const terms = new Set();
+      if (debouncedSearchQuery.value) {
+        for (const t of debouncedSearchQuery.value.toLowerCase().split(/\s+/)) {
+          if (t) terms.add(t);
+        }
+      }
+      // Expand selected keyword stems to all their surface forms
+      for (const stem of selectedKeywords) {
+        const kw = keywords.value.find(k => k.stem === stem);
+        if (kw) {
+          for (const form of kw.forms) terms.add(form);
+        }
+      }
+      return [...terms];
+    }
+
+    function highlightText(text, terms) {
+      if (!terms.length) return escapeHtml(text);
+      const escaped = escapeHtml(text);
+      const escapedTerms = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      // Sort by length descending so longer matches take priority
+      escapedTerms.sort((a, b) => b.length - a.length);
+      const regex = new RegExp('\\b(' + escapedTerms.join('|') + ')\\b', 'gi');
+      return escaped.replace(regex, '<mark>$1</mark>');
+    }
+
+    function highlightTitle(title) {
+      return highlightText(title, getHighlightTerms());
+    }
+
+    function highlightAbstract(abstract) {
+      return highlightText(abstract, getHighlightTerms());
+    }
+
+    // ── CSV Export ──
+    function exportCSV() {
+      const prefMap = new Map();
+      for (const p of papers.value) {
+        prefMap.set(String(p.id), p.preference);
+      }
+
+      const exportRows = rawRows.value.map(row => {
+        const id = String(row.paper).trim();
+        const newPref = prefMap.get(id);
+        return { ...row, preference: newPref !== undefined ? newPref : row.preference };
+      });
+
+      const csv = Papa.unparse(exportRows, {
+        columns: ['paper', 'title', 'preference', 'abstract', 'topics'],
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'revprefs_updated.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ── Profile import ──
+    function importProfile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      event.target.value = '';
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const profile = JSON.parse(e.target.result);
+          let topicMatches = 0, kwMatches = 0;
+
+          // Apply topic scores
+          if (profile.topicScores) {
+            for (const parent of topicTree.value) {
+              if (profile.topicScores[parent.name] !== undefined) {
+                parent.score = profile.topicScores[parent.name];
+                topicMatches++;
+              }
+              for (const child of parent.children) {
+                if (profile.topicScores[child.fullName] !== undefined) {
+                  child.score = profile.topicScores[child.fullName];
+                  topicMatches++;
+                }
+              }
+            }
+          }
+
+          // Apply keyword scores — match by stem
+          if (profile.keywordScores) {
+            for (const kw of keywords.value) {
+              if (profile.keywordScores[kw.stem] !== undefined) {
+                kw.score = profile.keywordScores[kw.stem];
+                kwMatches++;
+              }
+            }
+          }
+
+          recomputeScores();
+          saveState();
+          alert(`Profile imported: ${topicMatches} topic scores, ${kwMatches} keyword scores matched.`);
+        } catch (err) {
+          alert('Error reading profile: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function exportProfile() {
+      const topicScores = {};
+      for (const parent of topicTree.value) {
+        if (parent.score) topicScores[parent.name] = parent.score;
+        for (const child of parent.children) {
+          if (child.score) topicScores[child.fullName] = child.score;
+        }
+      }
+      const keywordScores = {};
+      for (const kw of keywords.value) {
+        if (kw.score) keywordScores[kw.stem] = kw.score;
+      }
+      const profile = {
+        description: 'Exported from Bidding Helper on ' + new Date().toISOString().slice(0, 10),
+        topicScores,
+        keywordScores,
+      };
+      const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'reviewer_profile.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ── Persistence ──
+    function titleHash(title) {
+      // Simple string hash (djb2) — not cryptographic, just a collision-resistant check
+      let h = 5381;
+      for (let i = 0; i < title.length; i++) h = ((h << 5) + h + title.charCodeAt(i)) | 0;
+      return h;
+    }
+
+    function saveState() {
+      const state = { preferences: {}, topicScores: {}, keywordScores: {}, savedAt: new Date().toISOString() };
+      for (const p of papers.value) {
+        if (p.preference !== p.originalPreference) {
+          state.preferences[p.id] = { pref: p.preference, th: titleHash(p.title) };
+        }
+      }
+      for (const parent of topicTree.value) {
+        if (parent.score) state.topicScores[parent.name] = parent.score;
+        for (const child of parent.children) {
+          if (child.score) state.topicScores[child.fullName] = child.score;
+        }
+      }
+      for (const kw of keywords.value) {
+        if (kw.score) state.keywordScores[kw.stem] = kw.score;
+      }
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+    }
+
+    function debouncedSave() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveState, 1000);
+    }
+
+    window.addEventListener('beforeunload', () => { if (papers.value.length) saveState(); });
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        if (state.preferences) {
+          let restored = 0, skipped = 0;
+          for (const p of papers.value) {
+            const entry = state.preferences[p.id];
+            if (entry === undefined) continue;
+            // Support new format {pref, th} and legacy format (plain number)
+            if (typeof entry === 'object' && entry.th !== undefined) {
+              if (entry.th === titleHash(p.title)) { p.preference = entry.pref; restored++; }
+              else { skipped++; }
+            } else if (typeof entry === 'number') {
+              // Legacy: no title hash, apply but warn
+              p.preference = entry; restored++;
+            }
+          }
+          if (skipped > 0) console.warn(`Bidding helper: skipped ${skipped} saved preferences (title mismatch — different CSV?)`);
+          if (restored > 0) console.log(`Bidding helper: restored ${restored} preferences`);
+        }
+        if (state.topicScores) {
+          for (const parent of topicTree.value) {
+            if (state.topicScores[parent.name] !== undefined) parent.score = state.topicScores[parent.name];
+            for (const child of parent.children) {
+              if (state.topicScores[child.fullName] !== undefined) child.score = state.topicScores[child.fullName];
+            }
+          }
+        }
+        if (state.keywordScores) {
+          for (const kw of keywords.value) {
+            if (state.keywordScores[kw.stem] !== undefined) kw.score = state.keywordScores[kw.stem];
+          }
+        }
+      } catch (e) {}
+    }
+
+    // ── Keyboard navigation ──
+    function handleKeydown(e) {
+      // "?" works even from inputs
+      if (e.key === '?') {
+        e.preventDefault();
+        showHelp.value = !showHelp.value;
+        return;
+      }
+      // Don't capture other keys when focus is in an input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+      // Escape closes help modal
+      if (e.key === 'Escape') {
+        if (showHelp.value) { showHelp.value = false; e.preventDefault(); }
+        return;
+      }
+
+      const len = filteredPapers.value.length;
+      if (!len) return;
+
+      // Track whether an abstract was open before navigation
+      const hadExpanded = expandedPaper.value !== null;
+
+      if (e.key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        focusedIndex.value = Math.min(focusedIndex.value + 1, len - 1);
+        if (hadExpanded) expandedPaper.value = filteredPapers.value[focusedIndex.value].id;
+        scrollToFocused();
+      } else if (e.key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        focusedIndex.value = Math.max(focusedIndex.value - 1, 0);
+        if (hadExpanded) expandedPaper.value = filteredPapers.value[focusedIndex.value].id;
+        scrollToFocused();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (focusedIndex.value >= 0 && focusedIndex.value < len) {
+          toggleExpand(filteredPapers.value[focusedIndex.value].id);
+        }
+      } else if (e.key >= '0' && e.key <= '3') {
+        if (focusedIndex.value >= 0 && focusedIndex.value < len) {
+          setPref(filteredPapers.value[focusedIndex.value], parseInt(e.key, 10));
+        }
+      } else if (e.key === '-') {
+        if (focusedIndex.value >= 0 && focusedIndex.value < len) {
+          setPref(filteredPapers.value[focusedIndex.value], -1);
+        }
+      } else if (e.key === 'c') {
+        if (focusedIndex.value >= 0 && focusedIndex.value < len) {
+          setPref(filteredPapers.value[focusedIndex.value], -100);
+        }
+      } else if (e.key === 'u') {
+        e.preventDefault();
+        undo();
+      } else if (e.key === 'r') {
+        e.preventDefault();
+        redo();
+      }
+    }
+
+    function scrollToFocused() {
+      nextTick(() => {
+        const el = document.querySelector('.paper-row.focused');
+        const container = document.querySelector('.paper-list-container');
+        if (!el || !container) return;
+        const stickyHeader = container.querySelector('.col-headers');
+        const headerH = stickyHeader ? stickyHeader.offsetHeight : 0;
+        const PEEK = 36; // show a peek of the next/previous entry
+        const elRect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const visibleTop = containerRect.top + headerH;
+        if (elRect.top < visibleTop + PEEK) {
+          container.scrollTop -= (visibleTop + PEEK - elRect.top);
+        } else if (elRect.bottom + PEEK > containerRect.bottom) {
+          container.scrollTop += (elRect.bottom + PEEK - containerRect.bottom);
+        }
+      });
+    }
+
+    return {
+      papers, isDragging, searchQuery, debouncedSearchQuery, prefFilter,
+      sortCol, sortAsc, expandedPaper, focusedIndex, topicTree, keywords,
+      selectedTopics, selectedKeywords, keywordSearch, showAllAbstracts, showTopics, showHelp,
+      undoStack, redoStack, prefValues: PREF_VALUES,
+
+      filteredPapers, filteredKeywords, activeKeywordChips, prefDist, totalPositive,
+      activeFilterTerms, hasAnyScores, maxScore,
+
+      handleFileSelect, handleDrop, importProfile, exportProfile, toggleSort, setPref, toggleExpand,
+      undo, redo,
+      toggleTopic, isTopicSelected, toggleKeyword, isKeywordSelected,
+      clearTopicFilters, clearKeywordFilters, shortTopic,
+      debouncedSearch, highlightTitle, highlightAbstract,
+      exportCSV, handleKeydown, scoreBarWidth, onScoreChange,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

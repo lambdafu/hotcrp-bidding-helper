@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pdf
+*.html-backup
+
+.DS_Store
+*.zip

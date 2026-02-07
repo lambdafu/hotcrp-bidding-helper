@@ -1,0 +1,47 @@
+Applications of cryptography
+  Analysis of deployed cryptography and cryptographic protocols
+  Blockchains and distributed ledger security
+  Cryptographic implementation analysis
+  New cryptographic protocols with real-world applications
+Hardware security
+  Automated security analysis of hardware designs and implementation
+  Cyber-physical systems security
+  Embedded systems security
+  Methods for detection of malicious or counterfeit hardware
+  Secure computer architectures
+  Side channels
+Human Aspects
+  Security and privacy law, policy and/or ethics
+  Security education and training
+  Understanding, measuring, quantifying, and protecting users from: information manipulation, mis/disinformation, harassment, extremism, and abuse via qualitative and quantitative methods
+  Usable security and privacy
+Network security
+  Analysis of network and security protocols
+  Denial-of-service attacks and countermeasures
+  Intrusion and anomaly detection and prevention
+  Network infrastructure security
+  Wireless security
+Privacy and Anonymity
+  Anonymity
+  Privacy attacks
+  Privacy metrics
+  Privacy-preserving computation
+  Surveillance and censorship
+Privacy of ML
+Security and Privacy for Web, Mobile, and Emerging Technologies
+  Games
+  IoT
+  Mobile
+  VR/AR
+  Web
+Security of ML
+Software security
+  Automated security analysis of source code and binaries
+  Forensics and diagnostics for security
+  Fuzzing and vulnerability discovery
+  Malware analysis
+  Program analysis
+System security
+  Cloud computing security
+  Distributed systems security
+  Operating systems security
