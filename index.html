@@ -769,7 +769,8 @@ const PREF_VALUES = [
   { value: -100, label: 'Conflict', short: 'C' },
 ];
 
-const STORAGE_KEY = 'hotcrp-bidding-helper';
+const STORAGE_KEY_PREFS = 'hotcrp-bidding-prefs';
+const STORAGE_KEY_SCORES = 'hotcrp-bidding-scores';
 
 createApp({
   setup() {
@@ -1431,22 +1432,31 @@ createApp({
     }
 
     function saveState() {
-      const state = { preferences: {}, topicScores: {}, keywordScores: {}, savedAt: new Date().toISOString() };
-      for (const p of papers.value) {
-        if (p.preference !== p.originalPreference) {
-          state.preferences[p.id] = { pref: p.preference, th: titleHash(p.title) };
+      // Preferences: single store, merge with existing (other CSVs' prefs stay)
+      try {
+        const existing = JSON.parse(localStorage.getItem(STORAGE_KEY_PREFS) || '{}');
+        for (const p of papers.value) {
+          if (p.preference !== p.originalPreference) {
+            existing[p.id + ':' + titleHash(p.title)] = p.preference;
+          } else {
+            delete existing[p.id + ':' + titleHash(p.title)];
+          }
         }
-      }
+        localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(existing));
+      } catch (e) {}
+
+      // Scores: shared across files
+      const scores = { topicScores: {}, keywordScores: {} };
       for (const parent of topicTree.value) {
-        if (parent.score) state.topicScores[parent.name] = parent.score;
+        if (parent.score) scores.topicScores[parent.name] = parent.score;
         for (const child of parent.children) {
-          if (child.score) state.topicScores[child.fullName] = child.score;
+          if (child.score) scores.topicScores[child.fullName] = child.score;
         }
       }
       for (const kw of keywords.value) {
-        if (kw.score) state.keywordScores[kw.stem] = kw.score;
+        if (kw.score) scores.keywordScores[kw.stem] = kw.score;
       }
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+      try { localStorage.setItem(STORAGE_KEY_SCORES, JSON.stringify(scores)); } catch (e) {}
     }
 
     function debouncedSave() {
@@ -1457,38 +1467,34 @@ createApp({
     window.addEventListener('beforeunload', () => { if (papers.value.length) saveState(); });
 
     function loadState() {
+      // Preferences: look up by id:titleHash key
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
-        const state = JSON.parse(raw);
-        if (state.preferences) {
-          let restored = 0, skipped = 0;
-          for (const p of papers.value) {
-            const entry = state.preferences[p.id];
-            if (entry === undefined) continue;
-            // Support new format {pref, th} and legacy format (plain number)
-            if (typeof entry === 'object' && entry.th !== undefined) {
-              if (entry.th === titleHash(p.title)) { p.preference = entry.pref; restored++; }
-              else { skipped++; }
-            } else if (typeof entry === 'number') {
-              // Legacy: no title hash, apply but warn
-              p.preference = entry; restored++;
+        const prefs = JSON.parse(localStorage.getItem(STORAGE_KEY_PREFS) || '{}');
+        let restored = 0;
+        for (const p of papers.value) {
+          const key = p.id + ':' + titleHash(p.title);
+          if (prefs[key] !== undefined) { p.preference = prefs[key]; restored++; }
+        }
+        if (restored > 0) console.log(`Bidding helper: restored ${restored} preferences`);
+      } catch (e) {}
+
+      // Scores: shared
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_SCORES);
+        if (raw) {
+          const scores = JSON.parse(raw);
+          if (scores.topicScores) {
+            for (const parent of topicTree.value) {
+              if (scores.topicScores[parent.name] !== undefined) parent.score = scores.topicScores[parent.name];
+              for (const child of parent.children) {
+                if (scores.topicScores[child.fullName] !== undefined) child.score = scores.topicScores[child.fullName];
+              }
             }
           }
-          if (skipped > 0) console.warn(`Bidding helper: skipped ${skipped} saved preferences (title mismatch — different CSV?)`);
-          if (restored > 0) console.log(`Bidding helper: restored ${restored} preferences`);
-        }
-        if (state.topicScores) {
-          for (const parent of topicTree.value) {
-            if (state.topicScores[parent.name] !== undefined) parent.score = state.topicScores[parent.name];
-            for (const child of parent.children) {
-              if (state.topicScores[child.fullName] !== undefined) child.score = state.topicScores[child.fullName];
+          if (scores.keywordScores) {
+            for (const kw of keywords.value) {
+              if (scores.keywordScores[kw.stem] !== undefined) kw.score = scores.keywordScores[kw.stem];
             }
-          }
-        }
-        if (state.keywordScores) {
-          for (const kw of keywords.value) {
-            if (state.keywordScores[kw.stem] !== undefined) kw.score = state.keywordScores[kw.stem];
           }
         }
       } catch (e) {}
