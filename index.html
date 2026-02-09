@@ -543,7 +543,7 @@ select.filter-select {
       <button class="btn" @click="$refs.profileInput.click()" title="Import reviewer_profile.json">Import Profile</button>
       <input ref="profileInput" type="file" accept=".json" @change="importProfile" style="display:none">
       <button class="btn" @click="exportProfile" title="Export current scores as profile JSON">Export Profile</button>
-      <input class="search-box" v-model="searchQuery" placeholder="Search titles & abstracts..." @input="debouncedSearch">
+      <input class="search-box" v-model="searchQuery" placeholder="Search titles & abstracts..." @input="debouncedSearch" autocorrect="off" autocapitalize="off" spellcheck="false">
       <button class="toggle-btn" :class="{ active: showAllAbstracts }" @click="showAllAbstracts = !showAllAbstracts" title="Show/hide all abstracts">Show Abstracts</button>
       <button class="toggle-btn" :class="{ active: showTopics }" @click="showTopics = !showTopics" title="Show/hide topic tags on papers">Show Topics</button>
       <button class="undo-btn" @click="undo" :disabled="!undoStack.length" title="Undo last preference change (u)">&#x21A9;</button>
@@ -678,7 +678,7 @@ select.filter-select {
           {{ chip.word }}<span class="keyword-chip-x" @click="toggleKeyword(chip.stem)">&times;</span>
         </span>
       </div>
-      <input class="keyword-search" v-model="keywordSearch" placeholder="Find keyword...">
+      <input class="keyword-search" v-model="keywordSearch" placeholder="Find keyword..." autocorrect="off" autocapitalize="off" spellcheck="false">
       <div v-for="kw in filteredKeywords" :key="kw.stem" class="keyword-row">
         <span class="cb" :class="{checked: isKeywordSelected(kw.stem)}" @click="toggleKeyword(kw.stem)">&#10003;</span>
         <span class="keyword-word" @click="toggleKeyword(kw.stem)" :title="'Forms: ' + kw.forms.join(', ') + ' | DF: ' + kw.df">{{ kw.word }}</span>
